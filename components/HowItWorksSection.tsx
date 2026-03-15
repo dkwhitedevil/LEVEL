@@ -4,7 +4,7 @@ import { motion } from 'motion/react';
 
 export default function HowItWorksSection() {
   return (
-    <section className="w-full py-32 px-6 relative z-10 bg-[#02040A]">
+    <section id="how-it-works" className="w-full py-32 px-6 relative z-10 bg-[#02040A]">
       <div className="max-w-7xl mx-auto">
         {/* Section Header */}
         <div className="mb-24 text-center">
@@ -24,7 +24,7 @@ export default function HowItWorksSection() {
             transition={{ duration: 0.8, delay: 0.1, ease: [0.16, 1, 0.3, 1] }}
             className="text-lg md:text-xl text-brand-gray/70 font-light tracking-wide max-w-2xl mx-auto"
           >
-            Understand market structure before your order reaches execution.
+            Understand market structure before your order reaches execution on Injective Testnet.
           </motion.p>
         </div>
 

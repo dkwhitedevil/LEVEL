@@ -2,11 +2,28 @@
 
 import { motion } from 'motion/react';
 import Link from 'next/link';
+import { useState } from 'react';
 import { ArrowRight, Play, Activity, BarChart2, ShieldAlert } from 'lucide-react';
 import MarketsSection from '@/components/MarketsSection';
 import HowItWorksSection from '@/components/HowItWorksSection';
+import WalletButton from '@/components/WalletButton';
+import WalletConnectModal from '@/components/WalletConnectModal';
+import NetworkStatus from '@/components/NetworkStatus';
+import { useWallet } from '@/contexts/WalletContext';
+import { useRouter } from 'next/navigation';
 
 export default function RevealEntryScreen() {
+  const { isConnected, walletType, address, connect, disconnect } = useWallet();
+  const [isWalletModalOpen, setIsWalletModalOpen] = useState(false);
+  const router = useRouter();
+
+  const handleWalletConnect = (walletType: string, address: string) => {
+    connect(walletType, address);
+    // Auto-redirect to dashboard after connection
+    setTimeout(() => {
+      router.push('/dashboard');
+    }, 500);
+  };
   return (
     <div className="relative min-h-screen flex flex-col items-center justify-between overflow-x-hidden bg-[#02040A] text-white font-sans selection:bg-brand-blue/30">
       {/* Background Visuals */}
@@ -80,13 +97,18 @@ export default function RevealEntryScreen() {
       <nav className="relative z-20 w-full px-8 py-6 flex justify-between items-center max-w-7xl mx-auto">
         <div className="text-xl font-space font-bold tracking-[0.2em] text-white">LEVEL</div>
         <div className="hidden md:flex items-center gap-10 text-sm font-medium text-brand-gray/80">
-          <Link href="#" className="hover:text-white transition-colors">Markets</Link>
-          <Link href="#" className="hover:text-white transition-colors">How It Works</Link>
+          <Link href="#markets" className="hover:text-white transition-colors scroll-smooth">Markets</Link>
+          <Link href="#how-it-works" className="hover:text-white transition-colors scroll-smooth">How It Works</Link>
           <Link href="/dashboard" className="hover:text-white transition-colors">Dashboard</Link>
+          <NetworkStatus />
         </div>
-        <Link href="/dashboard" className="hidden md:flex px-5 py-2.5 rounded-full border border-white/10 bg-white/5 hover:bg-white/10 transition-colors text-sm font-medium text-white">
-          Connect Wallet
-        </Link>
+        <WalletButton
+          isConnected={isConnected}
+          walletType={walletType}
+          address={address}
+          onConnect={() => setIsWalletModalOpen(true)}
+          onDisconnect={disconnect}
+        />
       </nav>
 
       {/* Main Content */}
@@ -100,11 +122,11 @@ export default function RevealEntryScreen() {
           <h1 className="text-[5rem] md:text-[8rem] lg:text-[10rem] font-space font-bold text-white tracking-[0.15em] leading-none mb-6 ml-[0.15em]">
             LEVEL
           </h1>
-          <h2 className="text-2xl md:text-3xl font-light text-white tracking-wide mb-4">
-            Know the market before you enter
-          </h2>
+          <p className="text-2xl md:text-3xl font-light text-white tracking-wide mb-4">
+            Know the market before you enter on Injective Testnet
+          </p>
           <p className="text-base md:text-lg text-brand-gray/70 font-light tracking-wide max-w-2xl mb-12">
-            See what price does not explain before execution
+            See what price does not explain before execution on Injective Testnet
           </p>
         </motion.div>
 
@@ -114,8 +136,15 @@ export default function RevealEntryScreen() {
           transition={{ duration: 1, delay: 0.3, ease: [0.16, 1, 0.3, 1] }}
           className="flex flex-col sm:flex-row items-center gap-6 mb-24"
         >
-          <Link href="/dashboard" className="group relative px-10 py-4 bg-brand-blue text-brand-black font-semibold rounded-full overflow-hidden transition-all hover:shadow-[0_0_40px_rgba(0,229,255,0.4)] flex items-center justify-center gap-3 text-lg">
-            <span className="relative z-10">Enter Platform</span>
+        <Link href={isConnected ? "/dashboard" : "#"} 
+              onClick={(e) => {
+                if (!isConnected) {
+                  e.preventDefault();
+                  setIsWalletModalOpen(true);
+                }
+              }}
+              className="group relative px-10 py-4 bg-brand-blue text-brand-black font-semibold rounded-full overflow-hidden transition-all hover:shadow-[0_0_40px_rgba(0,229,255,0.4)] flex items-center justify-center gap-3 text-lg">
+            <span className="relative z-10">{isConnected ? "Enter Dashboard" : "Enter Platform"}</span>
             <ArrowRight className="w-5 h-5 relative z-10 group-hover:translate-x-1 transition-transform" />
             <div className="absolute inset-0 bg-white/20 translate-y-full group-hover:translate-y-0 transition-transform duration-300 ease-out" />
           </Link>
@@ -173,6 +202,12 @@ export default function RevealEntryScreen() {
 
       <MarketsSection />
       <HowItWorksSection />
+      
+      <WalletConnectModal
+        isOpen={isWalletModalOpen}
+        onClose={() => setIsWalletModalOpen(false)}
+        onConnect={handleWalletConnect}
+      />
     </div>
   );
 }

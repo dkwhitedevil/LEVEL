@@ -69,7 +69,7 @@ const StatusColor = (status: string) => {
 
 export default function MarketsSection() {
   return (
-    <section className="w-full py-32 px-6 relative z-10 bg-[#02040A]">
+    <section id="markets" className="w-full py-32 px-6 relative z-10 bg-[#02040A]">
       <div className="max-w-6xl mx-auto">
         {/* Section Header */}
         <div className="mb-20 text-center md:text-left">
@@ -89,7 +89,7 @@ export default function MarketsSection() {
             transition={{ duration: 0.8, delay: 0.1, ease: [0.16, 1, 0.3, 1] }}
             className="text-lg md:text-xl text-brand-gray/70 font-light tracking-wide max-w-2xl"
           >
-            Analyze liquidity behavior across active Injective trading pairs.
+            Analyze liquidity behavior across active Injective Testnet trading pairs.
           </motion.p>
         </div>
 
@@ -167,8 +167,9 @@ export default function MarketsSection() {
             <div className="w-12 h-12 rounded-full bg-brand-blue/10 flex items-center justify-center shrink-0 border border-brand-blue/20">
               <Activity className="w-5 h-5 text-brand-blue" />
             </div>
-            <p className="text-lg md:text-xl text-white/90 font-light leading-relaxed tracking-wide">
-              LEVEL reads live orderbook depth directly from Injective markets to estimate execution quality before trade placement.
+            <p className="text-xl md:text-3xl text-white/90 font-light leading-relaxed tracking-wide font-space">
+              Price shows where the market is. <br className="hidden md:block" />
+              <span className="text-brand-blue font-medium">Liquidity explains what happens when you enter on Injective Testnet.</span>
             </p>
           </div>
         </motion.div>

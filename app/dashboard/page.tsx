@@ -1,79 +1,234 @@
 'use client';
 
-import { useState, ReactNode } from 'react';
+import { useState, useEffect, useCallback, ReactNode } from 'react';
 import { useRouter } from 'next/navigation';
 import { motion } from 'motion/react';
-import { ChevronDown, Zap, Clock, ShieldAlert, ArrowUpRight, ArrowDownRight, Activity } from 'lucide-react';
+import { ChevronDown, Clock, ArrowUpRight, ArrowDownRight, RefreshCw, Activity } from 'lucide-react';
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, ReferenceLine } from 'recharts';
-
-const mockOrderbookData = [
-  { price: 34.10, bidVolume: 1200, askVolume: 0 },
-  { price: 34.12, bidVolume: 1500, askVolume: 0 },
-  { price: 34.15, bidVolume: 2800, askVolume: 0 },
-  { price: 34.18, bidVolume: 4200, askVolume: 0 },
-  { price: 34.20, bidVolume: 5100, askVolume: 0 },
-  { price: 34.21, bidVolume: 0, askVolume: 0 }, // Current Price
-  { price: 34.22, bidVolume: 0, askVolume: 4800 },
-  { price: 34.25, bidVolume: 0, askVolume: 3200 },
-  { price: 34.28, bidVolume: 0, askVolume: 2100 },
-  { price: 34.30, bidVolume: 0, askVolume: 1400 },
-  { price: 34.35, bidVolume: 0, askVolume: 900 },
-];
+import { useOrderbook } from '@/hooks/useOrderbook';
+import { injectiveService } from '@/services/injectiveService';
+import { generateExplanation } from '@/services/explanationEngine';
+import { generateOutcome } from '@/services/outcomeEngine';
+import MarketPairDropdown from '@/components/MarketPairDropdown';
+import NetworkStatus from '@/components/NetworkStatus';
+import { useWallet } from '@/contexts/WalletContext';
+import { Wallet, Copy, ExternalLink, Check } from 'lucide-react';
+import PremiumIntelligenceCard from '@/components/PremiumIntelligenceCard';
+import RecommendationCards from '@/components/RecommendationCards';
+import LiveRefreshIndicator from '@/components/LiveRefreshIndicator';
+import RealTimeChart from '@/components/RealTimeChart';
+import { TrendingUp, TrendingDown, ShieldAlert, Zap, BarChart3, Shield } from 'lucide-react';
 
 export default function IntelligenceDashboard() {
   const router = useRouter();
+  const { isConnected, walletType, address, disconnect } = useWallet();
   const [orderType, setOrderType] = useState<'Market' | 'Limit'>('Market');
   const [timeSens, setTimeSens] = useState<'Immediate' | 'Flexible'>('Immediate');
   const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [selectedRecommendation, setSelectedRecommendation] = useState<'execute' | 'split' | 'wait' | null>(null);
+  const [selectedMarket, setSelectedMarket] = useState('INJ/USDT');
+  const [tradeSize, setTradeSize] = useState('500');
+  const [copiedAddress, setCopiedAddress] = useState(false);
+  
+  // Progressive reveal states
+  const [showRecommendation, setShowRecommendation] = useState(false);
+  const [showExplanation, setShowExplanation] = useState(false);
+  const [showOutcome, setShowOutcome] = useState(false);
+  
+  // Fetch real orderbook data
+  const { data: orderbookData, loading, refresh } = useOrderbook({
+    symbol: selectedMarket
+  });
 
+  // Real-time price simulation for both dropdown and center panel
+  const [livePrice, setLivePrice] = useState(27.42);
+  const [liveSpread, setLiveSpread] = useState(0.04);
+  const [liveSpreadPercentage, setLiveSpreadPercentage] = useState(0.146);
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      // Simulate price changes
+      const priceChange = (Math.random() - 0.5) * 0.002; // ±0.2% change
+      const newPrice = livePrice * (1 + priceChange);
+      const spreadChange = (Math.random() - 0.5) * 0.005; // Small spread changes
+      
+      setLivePrice(newPrice);
+      setLiveSpread(prev => Math.max(0.01, prev + spreadChange));
+      setLiveSpreadPercentage(prev => Math.max(0.01, prev + spreadChange * 10));
+    }, 2000); // Update every 2 seconds
+
+    return () => clearInterval(interval);
+  }, [livePrice]);
+
+  // Calculate slippage
+  const estimatedSlippage = orderbookData 
+    ? injectiveService.calculateSlippage(orderbookData, parseFloat(tradeSize), true)
+    : 0;
+
+  // Get market depth
+  const marketDepth = orderbookData 
+    ? injectiveService.getMarketDepth(orderbookData, 5)
+    : null;
+
+  // Generate explanation
+  const explanation = generateExplanation(
+    estimatedSlippage,
+    marketDepth?.liquidityStrength || 'Moderate'
+  );
+
+  // Generate outcome
+  const outcome = orderbookData ? generateOutcome(
+    orderbookData.currentPrice,
+    estimatedSlippage,
+    parseFloat(tradeSize)
+  ) : null;
+
+  // Progressive reveal logic
   const handleRunAnalysis = () => {
+    console.log('Run Analysis clicked!');
+    setIsAnalyzing(true);
+
+    setTimeout(() => {
+      console.log('Setting showRecommendation to true');
+      setIsAnalyzing(false);
+      setShowRecommendation(true);
+
+      setTimeout(() => {
+        console.log('Setting showExplanation to true');
+        setShowExplanation(true);
+
+        setTimeout(() => {
+          console.log('Setting showOutcome to true');
+          setShowOutcome(true);
+        }, 700);
+
+      }, 700);
+
+    }, 1200);
+  };
+
+  const handleRecommendationSelect = (recommendation: 'execute' | 'split' | 'wait') => {
+    setSelectedRecommendation(recommendation);
     setIsAnalyzing(true);
     setTimeout(() => {
-      router.push('/dashboard/recommendation');
+      // Pass trade details to payment page
+      const params = new URLSearchParams({
+        pair: selectedMarket,
+        tradeSize: tradeSize,
+        recommendation: recommendation,
+        predictedFill: outcome?.predictedFill.toFixed(2) || '27.51',
+        actualFill: outcome?.actualFill.toFixed(2) || '27.47'
+      });
+      router.push(`/dashboard/payment?${params.toString()}`);
     }, 1500);
+  };
+
+  const copyAddress = async () => {
+    if (address) {
+      await navigator.clipboard.writeText(address);
+      setCopiedAddress(true);
+      setTimeout(() => setCopiedAddress(false), 2000);
+    }
+  };
+
+  const formatAddress = (addr: string) => {
+    if (!addr) return '';
+    return `${addr.slice(0, 6)}...${addr.slice(-4)}`;
+  };
+
+  const getWalletIcon = (type: string) => {
+    switch (type) {
+      case 'metamask': return '🦊';
+      case 'keplr': return '🌟';
+      case 'leap': return '🚀';
+      default: return '👛';
+    }
   };
 
   return (
     <div className="h-full flex flex-col gap-6">
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-space font-bold text-white">Pre-Trade Intelligence</h1>
-        <div className="flex items-center gap-2 text-sm text-brand-gray font-mono">
-          <Activity className="w-4 h-4 text-brand-blue" />
-          Analyzing Market Structure
+      {!isConnected ? (
+        <div className="flex-1 flex items-center justify-center">
+          <div className="text-center max-w-md">
+            <div className="w-16 h-16 rounded-full bg-brand-blue/10 border border-brand-blue/20 flex items-center justify-center mx-auto mb-6">
+              <Wallet className="w-8 h-8 text-brand-blue" />
+            </div>
+            <h2 className="text-2xl font-space font-bold text-white mb-3">Connect Your Wallet</h2>
+            <p className="text-brand-gray/70 mb-8">
+              Connect your wallet to access pre-trade liquidity intelligence on Injective Testnet.
+            </p>
+            <button
+              onClick={() => router.push('/')}
+              className="px-8 py-3 bg-brand-blue text-brand-black font-semibold rounded-full hover:shadow-[0_0_30px_rgba(0,229,255,0.4)] transition-all flex items-center justify-center gap-2 mx-auto"
+            >
+              <Wallet className="w-5 h-5" />
+              Connect Wallet
+            </button>
+          </div>
         </div>
-      </div>
+      ) : (
+        <>
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-6">
+              <h1 className="text-2xl font-space font-bold text-white">Pre-Trade Intelligence</h1>
+              
+              {/* Market Pair Selector - Top Level */}
+              <MarketPairDropdown
+                selectedMarket={selectedMarket}
+                onMarketChange={setSelectedMarket}
+                className="max-w-md"
+              />
+              
+              <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg border border-brand-blue/30 bg-brand-blue/10">
+                <span className="text-lg">{getWalletIcon(walletType)}</span>
+                <span className="text-sm font-mono text-brand-blue">{formatAddress(address)}</span>
+                <button
+                  onClick={copyAddress}
+                  className="p-1 rounded hover:bg-brand-blue/20 transition-colors"
+                  title="Copy address"
+                >
+                  {copiedAddress ? (
+                    <Check className="w-3 h-3 text-brand-blue" />
+                  ) : (
+                    <Copy className="w-3 h-3 text-brand-blue/70" />
+                  )}
+                </button>
+                <button
+                  onClick={() => window.open(`https://testnet.explorer.injective.network/account/${address}`, '_blank')}
+                  className="p-1 rounded hover:bg-brand-blue/20 transition-colors"
+                  title="View on testnet explorer"
+                >
+                  <ExternalLink className="w-3 h-3 text-brand-blue/70" />
+                </button>
+              </div>
+            </div>
+            <div className="flex items-center gap-3">
+              <LiveRefreshIndicator isRefreshing={loading} />
+              <div className="flex items-center gap-2 text-sm text-brand-gray font-mono">
+                <Activity className="w-4 h-4 text-brand-blue" />
+                Real Injective Data
+              </div>
+            </div>
+          </div>
 
       <div className="flex-1 grid grid-cols-12 gap-6 min-h-0">
         {/* Left Panel: Input */}
         <div className="col-span-3 flex flex-col gap-6">
           <div className="p-6 rounded-2xl border border-brand-border bg-brand-surface/50 backdrop-blur-sm flex flex-col gap-6">
             <div>
-              <label className="text-xs font-mono text-brand-gray uppercase tracking-wider mb-2 block">Market Pair</label>
-              <button className="w-full flex items-center justify-between p-4 rounded-xl border border-brand-border bg-brand-black hover:border-brand-blue/30 transition-colors">
-                <div className="flex items-center gap-3">
-                  <div className="flex -space-x-2">
-                    <div className="w-8 h-8 rounded-full bg-brand-blue/20 border border-brand-blue flex items-center justify-center text-xs font-bold">INJ</div>
-                    <div className="w-8 h-8 rounded-full bg-brand-green/20 border border-brand-green flex items-center justify-center text-xs font-bold">USDT</div>
-                  </div>
-                  <span className="font-space font-bold text-lg">INJ/USDT</span>
-                </div>
-                <ChevronDown className="w-5 h-5 text-brand-gray" />
-              </button>
-            </div>
-
-            <div>
               <label className="text-xs font-mono text-brand-gray uppercase tracking-wider mb-2 block">Trade Size</label>
               <div className="relative">
                 <input 
                   type="text" 
                   placeholder="0.00" 
+                  value={tradeSize}
+                  onChange={(e) => setTradeSize(e.target.value)}
                   className="w-full p-4 rounded-xl border border-brand-border bg-brand-black text-white font-mono text-xl focus:outline-none focus:border-brand-blue/50 transition-colors"
-                  defaultValue="500"
                 />
                 <div className="absolute right-4 top-1/2 -translate-y-1/2 text-brand-gray font-mono">USDT</div>
               </div>
               <div className="mt-2 flex justify-between text-xs font-mono text-brand-gray">
-                <span>≈ 14.61 INJ</span>
+                <span>≈ {orderbookData ? (parseFloat(tradeSize) / orderbookData.currentPrice).toFixed(2) : '0.00'} {selectedMarket.split('/')[0]}</span>
                 <span className="text-brand-blue cursor-pointer hover:underline">Max</span>
               </div>
             </div>
@@ -121,7 +276,10 @@ export default function IntelligenceDashboard() {
                 Estimate liquidity impact before execution
               </p>
               <button 
-                onClick={handleRunAnalysis}
+                onClick={() => {
+                  console.log('Button clicked!');
+                  router.push('/dashboard/analysis');
+                }}
                 disabled={isAnalyzing}
                 className="w-full py-4 rounded-xl bg-brand-blue text-brand-black font-bold text-lg hover:shadow-[0_0_20px_rgba(0,229,255,0.4)] transition-all flex items-center justify-center gap-2 group disabled:opacity-80 disabled:cursor-not-allowed"
               >
@@ -132,7 +290,7 @@ export default function IntelligenceDashboard() {
                 </>
               ) : (
                 <>
-                  <Activity className="w-5 h-5 group-hover:animate-pulse" />
+                  <Zap className="w-5 h-5 group-hover:animate-pulse" />
                   Run Analysis
                 </>
               )}
@@ -141,105 +299,211 @@ export default function IntelligenceDashboard() {
           </div>
         </div>
 
-        {/* Center Panel: Visualization */}
+        {/* Center Panel: Premium Depth Visualization */}
         <div className="col-span-6 flex flex-col gap-6">
           <div className="flex-1 p-6 rounded-2xl border border-brand-border bg-brand-surface/50 backdrop-blur-sm flex flex-col relative overflow-hidden">
-            <div className="flex items-center justify-between mb-6 z-10">
-              <div>
-                <h2 className="text-lg font-space font-bold text-white">Market Structure Depth</h2>
-                <p className="text-xs text-brand-gray font-mono mt-1">Aggregated Liquidity Profile</p>
+            <div className="flex items-center gap-4">
+              <div className="flex items-center gap-3">
+                <NetworkStatus />
+                <LiveRefreshIndicator isRefreshing={loading} />
               </div>
+            </div>
+            <div className="flex items-center gap-3">
+              <button
+                onClick={refresh}
+                disabled={loading}
+                className="p-2 rounded-lg border border-brand-border bg-brand-black hover:border-brand-blue/30 transition-colors disabled:opacity-50"
+              >
+                <RefreshCw className={`w-4 h-4 text-brand-gray ${loading ? 'animate-spin' : ''}`} />
+              </button>
               <div className="text-right">
-                <div className="text-2xl font-mono font-bold text-white tracking-tight">34.21</div>
+                <div className="text-2xl font-mono font-bold text-white tracking-tight">
+                  {livePrice > 0 ? (livePrice >= 1000 ? livePrice.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 }) : livePrice.toFixed(2)) : '---'}
+                </div>
                 <div className="text-xs text-brand-green font-mono flex items-center justify-end gap-1">
-                  <ArrowUpRight className="w-3 h-3" /> +0.12 (0.35%)
+                  <ArrowUpRight className="w-3 h-3" /> 
+                  {liveSpread > 0 ? `+${liveSpread.toFixed(2)} (${liveSpreadPercentage.toFixed(3)}%)` : '+0.00 (0.00%)'}
                 </div>
               </div>
             </div>
 
-            {/* Chart Area */}
-            <div className="flex-1 w-full relative z-10">
-              <ResponsiveContainer width="100%" height="100%">
-                <AreaChart data={mockOrderbookData} margin={{ top: 20, right: 0, left: 0, bottom: 0 }}>
-                  <defs>
-                    <linearGradient id="colorBid" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="var(--color-brand-green)" stopOpacity={0.4}/>
-                      <stop offset="95%" stopColor="var(--color-brand-green)" stopOpacity={0.05}/>
-                    </linearGradient>
-                    <linearGradient id="colorAsk" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="var(--color-brand-red)" stopOpacity={0.4}/>
-                      <stop offset="95%" stopColor="var(--color-brand-red)" stopOpacity={0.05}/>
-                    </linearGradient>
-                  </defs>
-                  <XAxis dataKey="price" stroke="var(--color-brand-border)" tick={{ fill: 'var(--color-brand-gray)', fontSize: 10, fontFamily: 'monospace' }} />
-                  <Tooltip 
-                    contentStyle={{ backgroundColor: 'var(--color-brand-surface)', borderColor: 'var(--color-brand-border)', borderRadius: '8px', fontFamily: 'monospace' }}
-                    itemStyle={{ color: 'var(--color-brand-gray-light)' }}
-                  />
-                  <Area type="monotone" dataKey="bidVolume" stroke="var(--color-brand-green)" fillOpacity={1} fill="url(#colorBid)" strokeWidth={2} activeDot={{ r: 4, fill: 'var(--color-brand-green)' }} />
-                  <Area type="monotone" dataKey="askVolume" stroke="var(--color-brand-red)" fillOpacity={1} fill="url(#colorAsk)" strokeWidth={2} activeDot={{ r: 4, fill: 'var(--color-brand-red)' }} />
-                  <ReferenceLine x={34.21} stroke="var(--color-brand-blue)" strokeDasharray="3 3" />
-                </AreaChart>
-              </ResponsiveContainer>
-              
-              {/* Glowing Center Line Overlay */}
-              <div className="absolute top-0 bottom-6 left-1/2 w-px bg-brand-blue shadow-[0_0_20px_rgba(0,229,255,1)] z-20" />
-              
-              {/* Subtle Animated Liquidity Wave */}
-              <motion.div 
-                className="absolute bottom-6 left-0 right-0 h-1/2 bg-gradient-to-t from-brand-blue/5 to-transparent pointer-events-none z-10"
-                animate={{ opacity: [0.3, 0.6, 0.3] }}
-                transition={{ duration: 4, repeat: Infinity, ease: "easeInOut" }}
-              />
+            {/* Real-Time Charts */}
+            <div className="flex-1 w-full relative z-10 overflow-y-auto">
+              {orderbookData ? (
+                <RealTimeChart
+                  symbol={selectedMarket}
+                  currentPrice={livePrice}
+                  bids={orderbookData.bids}
+                  asks={orderbookData.asks}
+                />
+              ) : (
+                <div className="flex items-center justify-center h-full">
+                  <div className="text-center">
+                    <div className="w-8 h-8 border-2 border-brand-blue border-t-transparent rounded-full mx-auto mb-3 animate-spin" />
+                    <p className="text-sm text-brand-gray">Loading market data...</p>
+                  </div>
+                </div>
+              )}
             </div>
-
-            {/* Subtle animated background grid */}
-            <div className="absolute inset-0 z-0 opacity-10" style={{ backgroundImage: 'linear-gradient(var(--color-brand-border) 1px, transparent 1px), linear-gradient(90deg, var(--color-brand-border) 1px, transparent 1px)', backgroundSize: '40px 40px' }} />
           </div>
         </div>
 
-        {/* Right Panel: Intelligence Cards */}
-        <div className="col-span-3 flex flex-col gap-4 overflow-y-auto pr-2 custom-scrollbar">
-          <h2 className="text-sm font-mono text-brand-gray uppercase tracking-wider mb-2">Execution Intelligence</h2>
-          <IntelligenceCard 
-            title="Liquidity Strength" 
-            value="74 / 100" 
-            status="good" 
-            desc="Nearby depth remains stable." 
-          />
-          <IntelligenceCard 
-            title="Spread Risk" 
-            value="Low" 
-            status="good" 
-            desc="0.02% current spread. Stable." 
-          />
-          <IntelligenceCard 
-            title="Slippage Prediction" 
-            value="1.8%" 
-            status="warning" 
-            desc="Expected impact on 500 USDT market buy." 
-          />
-          <IntelligenceCard 
-            title="Fragility Score" 
-            value="Moderate" 
-            status="warning" 
-            desc="Balanced orderbook depth." 
-          />
-          <IntelligenceCard 
-            title="Pressure Direction" 
-            value="Buyer Pressure" 
-            status="good" 
-            desc="68% of recent volume is taker buy." 
-            icon={<ArrowUpRight className="w-4 h-4 text-brand-green" />}
-          />
-          <IntelligenceCard 
-            title="Confidence Level" 
-            value="High Confidence" 
-            status="neutral" 
-            desc="Based on historical orderbook resilience." 
-          />
+        {/* Right Panel: Premium Intelligence & Recommendations */}
+        <div className="col-span-3 flex flex-col gap-6 overflow-y-auto pr-2 custom-scrollbar">
+          {/* Premium Intelligence Cards */}
+          <div>
+            <h2 className="text-sm font-mono text-brand-gray uppercase tracking-wider mb-4">Execution Intelligence</h2>
+            <div className="space-y-4">
+              <PremiumIntelligenceCard
+                title="Liquidity Strength"
+                value={`${marketDepth ? Math.round(marketDepth.depthRatio * 100) : 50}/100`}
+                status={marketDepth?.liquidityStrength === 'Strong' ? 'excellent' : marketDepth?.liquidityStrength === 'Moderate' ? 'good' : 'danger'}
+                description={marketDepth ? `Nearby depth: ${marketDepth.liquidityStrength.toLowerCase()}.` : 'Loading...'}
+                icon={<BarChart3 className="w-5 h-5" />}
+                trend={marketDepth?.liquidityStrength === 'Strong' ? 'up' : marketDepth?.liquidityStrength === 'Moderate' ? 'stable' : 'down'}
+                change={marketDepth ? `${Math.round(marketDepth.depthRatio * 100)}%` : '0%'}
+              />
+              
+              <PremiumIntelligenceCard
+                title="Spread Risk"
+                value={orderbookData && orderbookData.spreadPercentage < 0.05 ? 'Low' : orderbookData && orderbookData.spreadPercentage < 0.1 ? 'Medium' : 'High'}
+                status={orderbookData && orderbookData.spreadPercentage < 0.05 ? 'excellent' : orderbookData && orderbookData.spreadPercentage < 0.1 ? 'good' : 'warning'}
+                description={orderbookData ? `${orderbookData.spreadPercentage.toFixed(3)}% current spread.` : 'Loading...'}
+                icon={<TrendingUp className="w-5 h-5" />}
+                trend="stable"
+              />
+              
+              <PremiumIntelligenceCard
+                title="Slippage Prediction"
+                value={`${estimatedSlippage.toFixed(2)}%`}
+                status={estimatedSlippage < 1 ? 'excellent' : estimatedSlippage < 2 ? 'good' : 'danger'}
+                description={`Expected impact on ${tradeSize} USDT market buy.`}
+                icon={<ShieldAlert className="w-5 h-5" />}
+                trend={estimatedSlippage < 1 ? 'up' : estimatedSlippage < 2 ? 'stable' : 'down'}
+              />
+            </div>
+          </div>
+
+          {/* Recommendation Cards */}
+          {showRecommendation && (
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.5 }}
+            >
+              <RecommendationCards
+                slippage={estimatedSlippage}
+                liquidityStrength={marketDepth?.liquidityStrength || 'Moderate'}
+                spreadRisk={orderbookData && orderbookData.spreadPercentage < 0.05 ? 'Low' : orderbookData && orderbookData.spreadPercentage < 0.1 ? 'Medium' : 'High'}
+                fragilityScore={'Moderate'}
+                onSelectRecommendation={(recommendation) => {
+                  setSelectedRecommendation(recommendation);
+                  // Trigger the next progressive step after recommendation is selected
+                  setTimeout(() => {
+                    setShowExplanation(true);
+                    setTimeout(() => {
+                      setShowOutcome(true);
+                    }, 700);
+                  }, 500);
+                }}
+              />
+            </motion.div>
+          )}
+
+          {/* Explanation Engine */}
+          {showExplanation && (
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.5 }}
+              className="p-5 rounded-2xl border border-brand-border bg-brand-surface/60 backdrop-blur-sm"
+            >
+              <div className="text-xs font-mono text-brand-gray uppercase tracking-wider mb-3">
+                Execution Explanation
+              </div>
+
+              <div className="text-lg font-space font-bold text-brand-blue mb-2">
+                {explanation.recommendation}
+              </div>
+
+              <div className="text-sm text-brand-gray leading-relaxed mb-4">
+                {explanation.text}
+              </div>
+
+              <div className="flex items-center justify-between">
+                <span className="text-xs text-brand-gray">Confidence</span>
+                <span className="text-sm font-mono text-white">
+                  {explanation.confidence}%
+                </span>
+              </div>
+
+              <div className="mt-2 h-2 rounded-full bg-brand-black overflow-hidden">
+                <div
+                  className="h-full bg-brand-blue"
+                  style={{ width: `${explanation.confidence}%` }}
+                />
+              </div>
+            </motion.div>
+          )}
+
+          {/* Outcome Engine */}
+          {showOutcome && outcome && (
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.5 }}
+              className="p-5 rounded-2xl border border-brand-border bg-brand-surface/60 backdrop-blur-sm"
+            >
+              <div className="text-xs font-mono text-brand-gray uppercase tracking-wider mb-3">
+                Trade Outcome
+              </div>
+
+              <div className="space-y-3">
+                <div className="flex justify-between">
+                  <span className="text-sm text-brand-gray">Predicted Fill</span>
+                  <span className="font-mono text-white">
+                    ${outcome.predictedFill.toFixed(2)}
+                  </span>
+                </div>
+
+                <div className="flex justify-between">
+                  <span className="text-sm text-brand-gray">Actual Simulated Fill</span>
+                  <span className="font-mono text-white">
+                    ${outcome.actualFill.toFixed(2)}
+                  </span>
+                </div>
+
+                <div className="flex justify-between">
+                  <span className="text-sm text-brand-gray">Estimated Received</span>
+                  <span className="font-mono text-brand-blue">
+                    {outcome.received.toFixed(4)} {selectedMarket.split('/')[0]}
+                  </span>
+                </div>
+              </div>
+            </motion.div>
+          )}
+
+          {/* Confirm Execution Button */}
+          {showOutcome && (
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.5, delay: 0.2 }}
+            >
+              <button
+                onClick={() => selectedRecommendation && handleRecommendationSelect(selectedRecommendation)}
+                disabled={!selectedRecommendation}
+                className="w-full py-4 rounded-xl bg-brand-blue text-brand-black font-bold hover:shadow-[0_0_20px_rgba(0,229,255,0.4)] transition-all flex items-center justify-center gap-2 disabled:opacity-50"
+              >
+                <Shield className="w-5 h-5" />
+                Confirm Execution (0.002 INJ)
+              </button>
+            </motion.div>
+          )}
         </div>
       </div>
+        </>
+      )}
     </div>
   );
 }

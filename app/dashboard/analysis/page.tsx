@@ -1,6 +1,6 @@
 'use client';
 
-import { BarChart2, Info, TrendingUp, TrendingDown, Activity, ShieldAlert, Layers, Maximize2 } from 'lucide-react';
+import { BarChart2, Info, TrendingUp, TrendingDown, Activity, ShieldAlert, Layers, Maximize2, ArrowRight } from 'lucide-react';
 import { AreaChart, Area, ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, LineChart, Line, ReferenceLine } from 'recharts';
 
 const mockDensityData = Array.from({ length: 40 }).map((_, i) => ({
@@ -195,6 +195,17 @@ export default function DeepAnalysisScreen() {
               <span className="text-base font-medium text-[#FFB800]">Moderate</span>
             </div>
           </div>
+        </div>
+        
+        {/* Next Button */}
+        <div className="text-center mt-6">
+          <button
+            onClick={() => window.location.href = '/dashboard/recommendations'}
+            className="px-8 py-4 rounded-xl bg-brand-blue text-brand-black font-bold text-lg hover:shadow-[0_0_20px_rgba(0,229,255,0.4)] transition-all flex items-center justify-center gap-2 mx-auto"
+          >
+            View Execution Recommendations
+            <ArrowRight className="w-5 h-5" />
+          </button>
         </div>
       </div>
 
